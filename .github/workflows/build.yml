@@ -58,6 +58,452 @@ jobs:
           }
           EOF
 
+          cat << 'EOF' > ClipsVideo/app/src/main/java/com/clipsvideo/app/MainActivity.kt
+          package com.clipsvideo.app
+
+          import android.app.Activity
+          import android.content.Intent
+          import android.graphics.Typeface
+          import android.graphics.drawable.GradientDrawable
+          import android.media.MediaExtractor
+          import android.media.MediaFormat
+          import android.media.MediaMetadataRetriever
+          import android.media.MediaMuxer
+          import android.net.Uri
+          import android.os.Build
+          import android.os.Bundle
+          import android.os.Handler
+          import android.os.Looper
+          import android.text.InputType
+          import android.view.Gravity
+          import android.view.View
+          import android.view.WindowInsets
+          import android.view.WindowInsetsController
+          import android.widget.*
+          import androidx.documentfile.provider.DocumentFile
+          import java.nio.ByteBuffer
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+          import java.util.concurrent.Executors
+          import kotlin.math.min
+
+          class MainActivity : Activity() {
+              private val pickVideo = 1001
+              private val pickFolder = 1002
+              private var videoUri: Uri? = null
+              private var folderUri: Uri? = null
+              private lateinit var videoLabel: TextView
+              private lateinit var folderLabel: TextView
+              private lateinit var durationInput: EditText
+              private lateinit var status: TextView
+              private lateinit var statusCard: LinearLayout
+              private lateinit var splitButton: Button
+              private val executor = Executors.newSingleThreadExecutor()
+              private val handler = Handler(Looper.getMainLooper())
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  configureSystemBars()
+                  buildUi()
+              }
+
+              @Suppress("DEPRECATION")
+              private fun configureSystemBars() {
+                  window.statusBarColor = 0xFFF3F5FA.toInt()
+                  window.navigationBarColor = 0xFFF3F5FA.toInt()
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                      window.insetsController?.setSystemBarsAppearance(
+                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                      )
+                  } else {
+                      window.decorView.systemUiVisibility =
+                          View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                  }
+              }
+
+              private fun dp(value: Int): Int =
+                  (value * resources.displayMetrics.density).toInt()
+
+              private fun roundedBox(
+                  fillColor: Int,
+                  radiusDp: Int,
+                  strokeColor: Int = 0x00000000,
+                  strokeWidthDp: Int = 0
+              ): GradientDrawable = GradientDrawable().apply {
+                  shape = GradientDrawable.RECTANGLE
+                  cornerRadius = dp(radiusDp).toFloat()
+                  setColor(fillColor)
+                  if (strokeWidthDp > 0) {
+                      setStroke(dp(strokeWidthDp), strokeColor)
+                  }
+              }
+
+              private fun buildUi() {
+                  val scroll = ScrollView(this).apply {
+                      setBackgroundColor(0xFFF3F5FA.toInt())
+                      isFillViewport = true
+                      clipToPadding = false
+                  }
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(dp(20), dp(24), dp(20), dp(28))
+                  }
+
+                  scroll.setOnApplyWindowInsetsListener { _, insets ->
+                      val topInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                          insets.getInsets(WindowInsets.Type.systemBars()).top
+                      } else {
+                          @Suppress("DEPRECATION")
+                          insets.systemWindowInsetTop
+                      }
+                      val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                          insets.getInsets(WindowInsets.Type.systemBars()).bottom
+                      } else {
+                          @Suppress("DEPRECATION")
+                          insets.systemWindowInsetBottom
+                      }
+                      layout.setPadding(
+                          dp(20),
+                          topInset + dp(16),
+                          dp(20),
+                          bottomInset + dp(24)
+                      )
+                      insets
+                  }
+
+                  val title = TextView(this).apply {
+                      text = "Clips Video"
+                      textSize = 26f
+                      setTextColor(0xFF0F172A.toInt())
+                      gravity = Gravity.CENTER
+                      setTypeface(null, Typeface.BOLD)
+                  }
+                  val subtitle = TextView(this).apply {
+                      text = "Split long videos into smaller MP4 clips"
+                      textSize = 14f
+                      gravity = Gravity.CENTER
+                      setTextColor(0xFF64748B.toInt())
+                  }
+                  layout.addView(title, wrapParams(bottomDp = 4))
+                  layout.addView(subtitle, wrapParams(bottomDp = 20))
+
+                  val videoCard = cardContainer()
+                  videoCard.addView(stepBadge("STEP 1 · SOURCE VIDEO"))
+                  videoLabel = TextView(this).apply {
+                      text = "No video selected"
+                      textSize = 14f
+                      setTextColor(0xFF475569.toInt())
+                      setPadding(0, dp(6), 0, dp(12))
+                  }
+                  videoCard.addView(videoLabel, wrapParams())
+                  videoCard.addView(secondaryButton("Choose Video") { openVideoPicker() })
+                  layout.addView(videoCard, wrapParams(bottomDp = 14))
+
+                  val folderCard = cardContainer()
+                  folderCard.addView(stepBadge("STEP 2 · DESTINATION"))
+                  folderLabel = TextView(this).apply {
+                      text = "No save folder selected"
+                      textSize = 14f
+                      setTextColor(0xFF475569.toInt())
+                      setPadding(0, dp(6), 0, dp(12))
+                  }
+                  folderCard.addView(folderLabel, wrapParams())
+                  folderCard.addView(secondaryButton("Choose Save Folder") { openFolderPicker() })
+                  layout.addView(folderCard, wrapParams(bottomDp = 14))
+
+                  val lengthCard = cardContainer()
+                  lengthCard.addView(stepBadge("STEP 3 · CLIP LENGTH (MINUTES)"))
+                  durationInput = EditText(this).apply {
+                      setText("15")
+                      hint = "Enter minutes (1 - 600)"
+                      textSize = 18f
+                      setTextColor(0xFF0F172A.toInt())
+                      setTypeface(null, Typeface.BOLD)
+                      inputType = InputType.TYPE_CLASS_NUMBER
+                      setSingleLine(true)
+                      setPadding(dp(14), dp(12), dp(14), dp(12))
+                      background = roundedBox(0xFFF8FAFC.toInt(), 10, 0xFFCBD5E1.toInt(), 1)
+                  }
+                  val inputParams = LinearLayout.LayoutParams(
+                      LinearLayout.LayoutParams.MATCH_PARENT,
+                      LinearLayout.LayoutParams.WRAP_CONTENT
+                  ).apply {
+                      topMargin = dp(8)
+                      bottomMargin = dp(10)
+                  }
+                  lengthCard.addView(durationInput, inputParams)
+
+                  val presetRow = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER
+                  }
+                  val presets = listOf(5, 10, 15, 30)
+                  presets.forEachIndexed { index, mins ->
+                      val chip = Button(this).apply {
+                          text = "${mins}m"
+                          textSize = 13f
+                          isAllCaps = false
+                          setTextColor(0xFF1E3A8A.toInt())
+                          background = roundedBox(0xFFEFF6FF.toInt(), 8, 0xFFBFDBFE.toInt(), 1)
+                          minimumHeight = 0
+                          minHeight = 0
+                          setPadding(dp(8), dp(8), dp(8), dp(8))
+                          setOnClickListener {
+                              durationInput.setText(mins.toString())
+                              durationInput.setSelection(durationInput.text.length)
+                          }
+                      }
+                      val cp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                          if (index < presets.lastIndex) rightMargin = dp(8)
+                      }
+                      presetRow.addView(chip, cp)
+                  }
+                  lengthCard.addView(presetRow, wrapParams())
+                  layout.addView(lengthCard, wrapParams(bottomDp = 18))
+
+                  splitButton = Button(this).apply {
+                      text = "Split Video"
+                      textSize = 16f
+                      isAllCaps = false
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFFFFFFFF.toInt())
+                      background = roundedBox(0xFF2563EB.toInt(), 14)
+                      setPadding(dp(16), dp(15), dp(16), dp(15))
+                  }
+                  splitButton.setOnClickListener { startSplit() }
+                  layout.addView(splitButton, wrapParams(bottomDp = 14))
+
+                  statusCard = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFFBFDBFE.toInt(), 1)
+                      setPadding(dp(14), dp(12), dp(14), dp(12))
+                  }
+                  status = TextView(this).apply {
+                      text = "Ready. Choose a video and a save folder to begin."
+                      textSize = 14f
+                      setTextColor(0xFF1E40AF.toInt())
+                  }
+                  statusCard.addView(status, wrapParams())
+                  layout.addView(statusCard, wrapParams(bottomDp = 14))
+
+                  val foot = TextView(this).apply {
+                      text = "Clips are exported sequentially in MP4 format. Video and audio streams are copied directly without re-encoding for fast export."
+                      textSize = 12f
+                      setTextColor(0xFF64748B.toInt())
+                      gravity = Gravity.CENTER
+                      setPadding(dp(8), 0, dp(8), 0)
+                  }
+                  layout.addView(foot, wrapParams())
+
+                  scroll.addView(layout)
+                  setContentView(scroll)
+              }
+
+              private fun wrapParams(bottomDp: Int = 0) = LinearLayout.LayoutParams(
+                  LinearLayout.LayoutParams.MATCH_PARENT,
+                  LinearLayout.LayoutParams.WRAP_CONTENT
+              ).apply {
+                  bottomMargin = dp(bottomDp)
+              }
+
+              private fun cardContainer() = LinearLayout(this).apply {
+                  orientation = LinearLayout.VERTICAL
+                  background = roundedBox(0xFFFFFFFF.toInt(), 16, 0xFFE2E8F0.toInt(), 1)
+                  setPadding(dp(16), dp(14), dp(16), dp(16))
+              }
+
+              private fun stepBadge(label: String) = TextView(this).apply {
+                  text = label
+                  textSize = 11f
+                  setTypeface(null, Typeface.BOLD)
+                  letterSpacing = 0.06f
+                  setTextColor(0xFF2563EB.toInt())
+              }
+
+              private fun secondaryButton(textValue: String, action: () -> Unit) = Button(this).apply {
+                  text = textValue
+                  textSize = 15f
+                  isAllCaps = false
+                  setTypeface(null, Typeface.BOLD)
+                  setTextColor(0xFF1E293B.toInt())
+                  background = roundedBox(0xFFF1F5F9.toInt(), 12, 0xFFCBD5E1.toInt(), 1)
+                  setPadding(dp(14), dp(12), dp(14), dp(12))
+                  setOnClickListener { action() }
+                  layoutParams = wrapParams()
+              }
+
+              private fun setStatusMessage(message: String, isError: Boolean = false, isSuccess: Boolean = false) {
+                  status.text = message
+                  when {
+                      isError -> {
+                          statusCard.background = roundedBox(0xFFFEF2F2.toInt(), 12, 0xFFFECACA.toInt(), 1)
+                          status.setTextColor(0xFFB91C1C.toInt())
+                      }
+                      isSuccess -> {
+                          statusCard.background = roundedBox(0xFFF0FDF4.toInt(), 12, 0xFFBBF7D0.toInt(), 1)
+                          status.setTextColor(0xFF15803D.toInt())
+                      }
+                      else -> {
+                          statusCard.background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFFBFDBFE.toInt(), 1)
+                          status.setTextColor(0xFF1E40AF.toInt())
+                      }
+                  }
+              }
+
+              private fun openVideoPicker() {
+                  val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                      addCategory(Intent.CATEGORY_OPENABLE)
+                      type = "video/*"
+                      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                  }
+                  startActivityForResult(i, pickVideo)
+              }
+
+              private fun openFolderPicker() {
+                  val i = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                      addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                  }
+                  startActivityForResult(i, pickFolder)
+              }
+
+              @Deprecated("Use Activity Result APIs in a future update")
+              override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+                  super.onActivityResult(requestCode, resultCode, data)
+                  if (resultCode != RESULT_OK || data?.data == null) return
+                  val uri = data.data!!
+                  val flags = data.flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                  try { contentResolver.takePersistableUriPermission(uri, flags) } catch (_: Exception) {}
+                  if (requestCode == pickVideo) {
+                      videoUri = uri
+                      val displayName = DocumentFile.fromSingleUri(this, uri)?.name ?: uri.lastPathSegment ?: "Video selected"
+                      videoLabel.text = displayName
+                      videoLabel.setTextColor(0xFF0F172A.toInt())
+                      videoLabel.setTypeface(null, Typeface.BOLD)
+                  } else if (requestCode == pickFolder) {
+                      folderUri = uri
+                      val folderName = DocumentFile.fromTreeUri(this, uri)?.name ?: "Selected folder"
+                      folderLabel.text = "Folder: $folderName"
+                      folderLabel.setTextColor(0xFF0F172A.toInt())
+                      folderLabel.setTypeface(null, Typeface.BOLD)
+                  }
+              }
+
+              private fun startSplit() {
+                  val source = videoUri
+                  val target = folderUri
+                  val minutes = durationInput.text.toString().toLongOrNull()
+                  if (source == null || target == null) {
+                      setStatusMessage("Please choose both a video and a save folder.", isError = true)
+                      return
+                  }
+                  if (minutes == null || minutes !in 1..600) {
+                      setStatusMessage("Enter a clip length from 1 to 600 minutes.", isError = true)
+                      return
+                  }
+                  splitButton.isEnabled = false
+                  splitButton.alpha = 0.6f
+                  setStatusMessage("Preparing video…")
+                  executor.execute {
+                      try {
+                          val count = splitVideo(source, target, minutes * 60L * 1_000_000L)
+                          handler.post {
+                              setStatusMessage("Finished! Created $count clip(s).", isSuccess = true)
+                              splitButton.isEnabled = true
+                              splitButton.alpha = 1.0f
+                          }
+                      } catch (e: Exception) {
+                          handler.post {
+                              setStatusMessage("Could not split video: ${e.message ?: "Unsupported file"}", isError = true)
+                              splitButton.isEnabled = true
+                              splitButton.alpha = 1.0f
+                          }
+                      }
+                  }
+              }
+
+              private fun splitVideo(source: Uri, folder: Uri, segmentUs: Long): Int {
+                  val retriever = MediaMetadataRetriever()
+                  retriever.setDataSource(this, source)
+                  val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()
+                      ?: throw IllegalStateException("Cannot read video duration")
+                  retriever.release()
+                  val totalUs = durationMs * 1000L
+                  val directory = DocumentFile.fromTreeUri(this, folder) ?: throw IllegalStateException("Cannot open save folder")
+                  val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                  var start = 0L
+                  var part = 1
+                  while (start < totalUs) {
+                      val end = min(start + segmentUs, totalUs)
+                      val out = directory.createFile("video/mp4", "ClipsVideo_${stamp}_%03d.mp4".format(Locale.US, part))
+                          ?: throw IllegalStateException("Cannot create output file")
+                      writeSegment(source, out.uri, start, end)
+                      handler.post { setStatusMessage("Exported clip $part…") }
+                      start = end
+                      part++
+                  }
+                  return part - 1
+              }
+
+              private fun writeSegment(source: Uri, destination: Uri, startUs: Long, endUs: Long) {
+                  val inputPfd = contentResolver.openFileDescriptor(source, "r")
+                      ?: throw IllegalStateException("Cannot open source video")
+                  val outputPfd = contentResolver.openFileDescriptor(destination, "w")
+                      ?: throw IllegalStateException("Cannot create output video")
+                  val extractor = MediaExtractor()
+                  var muxer: MediaMuxer? = null
+                  try {
+                      extractor.setDataSource(inputPfd.fileDescriptor)
+                      muxer = MediaMuxer(outputPfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                      val trackMap = HashMap<Int, Int>()
+                      for (i in 0 until extractor.trackCount) {
+                          val format = extractor.getTrackFormat(i)
+                          val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+                          if (mime.startsWith("video/") || mime.startsWith("audio/")) {
+                              extractor.selectTrack(i)
+                              trackMap[i] = muxer.addTrack(format)
+                          }
+                      }
+                      if (trackMap.isEmpty()) throw IllegalStateException("No supported audio/video tracks found")
+                      muxer.start()
+                      extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                      val firstSampleTime = extractor.sampleTime.coerceAtLeast(0L)
+                      val buffer = ByteBuffer.allocate(8 * 1024 * 1024)
+                      val info = MediaCodecBufferInfoCompat()
+                      while (true) {
+                          val track = extractor.sampleTrackIndex
+                          if (track < 0) break
+                          val time = extractor.sampleTime
+                          if (time >= endUs) break
+                          if (trackMap.containsKey(track)) {
+                              buffer.clear()
+                              val size = extractor.readSampleData(buffer, 0)
+                              if (size < 0) break
+                              info.set(0, size, (time - firstSampleTime).coerceAtLeast(0L), extractor.sampleFlags)
+                              muxer.writeSampleData(trackMap[track]!!, buffer, info.toAndroidInfo())
+                          }
+                          if (!extractor.advance()) break
+                      }
+                      muxer.stop()
+                  } finally {
+                      try { muxer?.release() } catch (_: Exception) {}
+                      extractor.release()
+                      inputPfd.close()
+                      outputPfd.close()
+                  }
+              }
+
+              override fun onDestroy() {
+                  executor.shutdown()
+                  super.onDestroy()
+              }
+          }
+          EOF
+
       - name: Build APK
         working-directory: ClipsVideo
         run: gradle assembleDebug
