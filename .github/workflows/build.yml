@@ -1,9 +1,8 @@
+name: Build Android APK
 
-
-name: Build Clips Video APK
-
-'on':
+on:
   push:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -17,7 +16,7 @@ jobs:
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Install Android SDK packages
@@ -32,7 +31,19 @@ jobs:
           gradle-version: '8.9'
 
       - name: Extract project
-        run: unzip -o ClipsVideo-Android-Project.zip
+        run: |
+          if [ -f "ClipsVideo-Android-Project.zip" ]; then
+            unzip -o ClipsVideo-Android-Project.zip
+          else
+            ZIP_FILE=$(find . -maxdepth 2 -iname "*ClipsVideo*.zip" | head -n 1)
+            if [ -n "$ZIP_FILE" ]; then
+              unzip -o "$ZIP_FILE"
+            elif [ ! -d "ClipsVideo" ]; then
+              echo "Could not find ClipsVideo-Android-Project.zip or ClipsVideo directory"
+              ls -la
+              exit 1
+            fi
+          fi
 
       - name: Build APK
         working-directory: ClipsVideo
@@ -41,7 +52,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: ClipsVideo-APK
+          name: ClipsVideo-debug-apk
           path: ClipsVideo/app/build/outputs/apk/debug/app-debug.apk
-
-          
