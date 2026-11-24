@@ -58,6 +58,23 @@ jobs:
           }
           EOF
 
+          cat << 'EOF' > ClipsVideo/app/src/main/AndroidManifest.xml
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <application
+                  android:label="Clips Video"
+                  android:supportsRtl="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
           cat << 'EOF' > ClipsVideo/app/src/main/java/com/clipsvideo/app/MainActivity.kt
           package com.clipsvideo.app
 
@@ -70,15 +87,11 @@ jobs:
           import android.media.MediaMetadataRetriever
           import android.media.MediaMuxer
           import android.net.Uri
-          import android.os.Build
           import android.os.Bundle
           import android.os.Handler
           import android.os.Looper
           import android.text.InputType
           import android.view.Gravity
-          import android.view.View
-          import android.view.WindowInsets
-          import android.view.WindowInsetsController
           import android.widget.*
           import androidx.documentfile.provider.DocumentFile
           import java.nio.ByteBuffer
@@ -97,36 +110,21 @@ jobs:
               private lateinit var folderLabel: TextView
               private lateinit var durationInput: EditText
               private lateinit var status: TextView
-              private lateinit var statusCard: LinearLayout
               private lateinit var splitButton: Button
               private val executor = Executors.newSingleThreadExecutor()
               private val handler = Handler(Looper.getMainLooper())
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  configureSystemBars()
-                  buildUi()
-              }
-
-              @Suppress("DEPRECATION")
-              private fun configureSystemBars() {
-                  window.statusBarColor = 0xFFF3F5FA.toInt()
-                  window.navigationBarColor = 0xFFF3F5FA.toInt()
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                      window.insetsController?.setSystemBarsAppearance(
-                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                      )
-                  } else {
-                      window.decorView.systemUiVisibility =
-                          View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                  try {
+                      buildUi()
+                  } catch (e: Exception) {
+                      Toast.makeText(this, "UI error: ${e.message}", Toast.LENGTH_LONG).show()
                   }
               }
 
               private fun dp(value: Int): Int =
-                  (value * resources.displayMetrics.density).toInt()
+                  (value * resources.displayMetrics.density).toInt().coerceAtLeast(1)
 
               private fun roundedBox(
                   fillColor: Int,
@@ -146,34 +144,11 @@ jobs:
                   val scroll = ScrollView(this).apply {
                       setBackgroundColor(0xFFF3F5FA.toInt())
                       isFillViewport = true
-                      clipToPadding = false
                   }
 
                   val layout = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
-                      setPadding(dp(20), dp(24), dp(20), dp(28))
-                  }
-
-                  scroll.setOnApplyWindowInsetsListener { _, insets ->
-                      val topInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                          insets.getInsets(WindowInsets.Type.systemBars()).top
-                      } else {
-                          @Suppress("DEPRECATION")
-                          insets.systemWindowInsetTop
-                      }
-                      val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                          insets.getInsets(WindowInsets.Type.systemBars()).bottom
-                      } else {
-                          @Suppress("DEPRECATION")
-                          insets.systemWindowInsetBottom
-                      }
-                      layout.setPadding(
-                          dp(20),
-                          topInset + dp(16),
-                          dp(20),
-                          bottomInset + dp(24)
-                      )
-                      insets
+                      setPadding(dp(20), dp(44), dp(20), dp(32))
                   }
 
                   val title = TextView(this).apply {
@@ -278,18 +253,14 @@ jobs:
                   splitButton.setOnClickListener { startSplit() }
                   layout.addView(splitButton, wrapParams(bottomDp = 14))
 
-                  statusCard = LinearLayout(this).apply {
-                      orientation = LinearLayout.VERTICAL
-                      background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFFBFDBFE.toInt(), 1)
-                      setPadding(dp(14), dp(12), dp(14), dp(12))
-                  }
                   status = TextView(this).apply {
                       text = "Ready. Choose a video and a save folder to begin."
                       textSize = 14f
                       setTextColor(0xFF1E40AF.toInt())
+                      background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFFBFDBFE.toInt(), 1)
+                      setPadding(dp(14), dp(12), dp(14), dp(12))
                   }
-                  statusCard.addView(status, wrapParams())
-                  layout.addView(statusCard, wrapParams(bottomDp = 14))
+                  layout.addView(status, wrapParams(bottomDp = 14))
 
                   val foot = TextView(this).apply {
                       text = "Clips are exported sequentially in MP4 format. Video and audio streams are copied directly without re-encoding for fast export."
@@ -337,24 +308,6 @@ jobs:
                   layoutParams = wrapParams()
               }
 
-              private fun setStatusMessage(message: String, isError: Boolean = false, isSuccess: Boolean = false) {
-                  status.text = message
-                  when {
-                      isError -> {
-                          statusCard.background = roundedBox(0xFFFEF2F2.toInt(), 12, 0xFFFECACA.toInt(), 1)
-                          status.setTextColor(0xFFB91C1C.toInt())
-                      }
-                      isSuccess -> {
-                          statusCard.background = roundedBox(0xFFF0FDF4.toInt(), 12, 0xFFBBF7D0.toInt(), 1)
-                          status.setTextColor(0xFF15803D.toInt())
-                      }
-                      else -> {
-                          statusCard.background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFFBFDBFE.toInt(), 1)
-                          status.setTextColor(0xFF1E40AF.toInt())
-                      }
-                  }
-              }
-
               private fun openVideoPicker() {
                   val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                       addCategory(Intent.CATEGORY_OPENABLE)
@@ -398,30 +351,21 @@ jobs:
                   val target = folderUri
                   val minutes = durationInput.text.toString().toLongOrNull()
                   if (source == null || target == null) {
-                      setStatusMessage("Please choose both a video and a save folder.", isError = true)
+                      status.text = "Please choose both a video and a save folder."
                       return
                   }
                   if (minutes == null || minutes !in 1..600) {
-                      setStatusMessage("Enter a clip length from 1 to 600 minutes.", isError = true)
+                      status.text = "Enter a clip length from 1 to 600 minutes."
                       return
                   }
                   splitButton.isEnabled = false
-                  splitButton.alpha = 0.6f
-                  setStatusMessage("Preparing video…")
+                  status.text = "Preparing video…"
                   executor.execute {
                       try {
                           val count = splitVideo(source, target, minutes * 60L * 1_000_000L)
-                          handler.post {
-                              setStatusMessage("Finished! Created $count clip(s).", isSuccess = true)
-                              splitButton.isEnabled = true
-                              splitButton.alpha = 1.0f
-                          }
+                          handler.post { status.text = "Finished! Created $count clip(s)."; splitButton.isEnabled = true }
                       } catch (e: Exception) {
-                          handler.post {
-                              setStatusMessage("Could not split video: ${e.message ?: "Unsupported file"}", isError = true)
-                              splitButton.isEnabled = true
-                              splitButton.alpha = 1.0f
-                          }
+                          handler.post { status.text = "Could not split video: ${e.message ?: "Unsupported file"}"; splitButton.isEnabled = true }
                       }
                   }
               }
@@ -442,7 +386,7 @@ jobs:
                       val out = directory.createFile("video/mp4", "ClipsVideo_${stamp}_%03d.mp4".format(Locale.US, part))
                           ?: throw IllegalStateException("Cannot create output file")
                       writeSegment(source, out.uri, start, end)
-                      handler.post { setStatusMessage("Exported clip $part…") }
+                      handler.post { status.text = "Exported clip $part…" }
                       start = end
                       part++
                   }
