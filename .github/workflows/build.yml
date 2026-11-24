@@ -30,7 +30,7 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Extract project
+      - name: Extract and configure project
         run: |
           if [ -f "ClipsVideo-Android-Project.zip" ]; then
             unzip -o ClipsVideo-Android-Project.zip
@@ -44,6 +44,19 @@ jobs:
               exit 1
             fi
           fi
+
+          cat << 'EOF' >> ClipsVideo/app/build.gradle.kts
+
+          android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+          EOF
 
       - name: Build APK
         working-directory: ClipsVideo
