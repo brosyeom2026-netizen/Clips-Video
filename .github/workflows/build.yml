@@ -45,6 +45,10 @@ jobs:
             fi
           fi
 
+          mkdir -p ClipsVideo/app/src/main/res/drawable
+          mkdir -p ClipsVideo/app/src/main/res/mipmap-anydpi-v26
+          mkdir -p ClipsVideo/app/src/main/java/com/clipsvideo/app
+
           cat << 'EOF' >> ClipsVideo/app/build.gradle.kts
 
           android {
@@ -58,10 +62,167 @@ jobs:
           }
           EOF
 
+          # Adaptive Icon Background
+          cat << 'EOF' > ClipsVideo/app/src/main/res/drawable/ic_clips_logo_background.xml
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:aapt="http://schemas.android.com/aapt"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+              <path android:pathData="M0,0h108v108h-108z">
+                  <aapt:attr name="android:fillColor">
+                      <gradient
+                          android:startX="18"
+                          android:startY="12"
+                          android:endX="92"
+                          android:endY="96"
+                          android:type="linear">
+                          <item android:offset="0.0" android:color="#FF1E40AF"/>
+                          <item android:offset="0.55" android:color="#FF1D4ED8"/>
+                          <item android:offset="1.0" android:color="#FF0F172A"/>
+                      </gradient>
+                  </aapt:attr>
+              </path>
+          </vector>
+          EOF
+
+          # Adaptive Icon Foreground (Split Filmstrip + Scissors)
+          cat << 'EOF' > ClipsVideo/app/src/main/res/drawable/ic_clips_logo_foreground.xml
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:aapt="http://schemas.android.com/aapt"
+              android:width="108dp"
+              android:height="108dp"
+              android:viewportWidth="108"
+              android:viewportHeight="108">
+
+              <!-- Left Filmstrip Half (tilted) -->
+              <group
+                  android:pivotX="38"
+                  android:pivotY="54"
+                  android:rotation="-7">
+                  <path android:pathData="M22,33h29v42h-29a4,4 0 0,1 -4,-4v-34a4,4 0 0,1 4,-4z">
+                      <aapt:attr name="android:fillColor">
+                          <gradient
+                              android:startX="18"
+                              android:startY="33"
+                              android:endX="51"
+                              android:endY="75"
+                              android:type="linear">
+                              <item android:offset="0.0" android:color="#FF38BDF8"/>
+                              <item android:offset="1.0" android:color="#FF2563EB"/>
+                          </gradient>
+                      </aapt:attr>
+                  </path>
+                  <!-- Left Sprocket Holes -->
+                  <path android:fillColor="#FF0F172A" android:pathData="M22,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M29,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M36,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M43,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M22,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M29,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M36,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M43,68.5h3.5v3.5h-3.5z"/>
+                  <!-- Inner Frame & Play Triangle -->
+                  <path android:fillColor="#330F172A" android:pathData="M23,43h25v22h-25z"/>
+                  <path android:fillColor="#FFFFFFFF" android:pathData="M32,49l10,5l-10,5z"/>
+              </group>
+
+              <!-- Right Filmstrip Half (tilted) -->
+              <group
+                  android:pivotX="70"
+                  android:pivotY="54"
+                  android:rotation="7">
+                  <path android:pathData="M57,33h29a4,4 0 0,1 4,4v34a4,4 0 0,1 -4,4h-29z">
+                      <aapt:attr name="android:fillColor">
+                          <gradient
+                              android:startX="57"
+                              android:startY="33"
+                              android:endX="90"
+                              android:endY="75"
+                              android:type="linear">
+                              <item android:offset="0.0" android:color="#FF60A5FA"/>
+                              <item android:offset="1.0" android:color="#FF1D4ED8"/>
+                          </gradient>
+                      </aapt:attr>
+                  </path>
+                  <!-- Right Sprocket Holes -->
+                  <path android:fillColor="#FF0F172A" android:pathData="M61.5,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M68.5,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M75.5,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M82.5,36h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M61.5,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M68.5,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M75.5,68.5h3.5v3.5h-3.5z"/>
+                  <path android:fillColor="#FF0F172A" android:pathData="M82.5,68.5h3.5v3.5h-3.5z"/>
+                  <!-- Inner Frame & Play Triangle -->
+                  <path android:fillColor="#330F172A" android:pathData="M60,43h25v22h-25z"/>
+                  <path android:fillColor="#FFFFFFFF" android:pathData="M68,49l10,5l-10,5z"/>
+              </group>
+
+              <!-- Center Glowing Cut Line -->
+              <path
+                  android:strokeColor="#FFBAE6FD"
+                  android:strokeWidth="1.6"
+                  android:strokeLineCap="round"
+                  android:pathData="M54,24v60"/>
+
+              <!-- Center Scissors Blades -->
+              <path
+                  android:fillColor="#FFF8FAFC"
+                  android:pathData="M46.5,35L59.5,61L56.5,62.5L44.5,38.5C44,37 45,35 46.5,35Z"/>
+              <path
+                  android:fillColor="#FFE2E8F0"
+                  android:pathData="M61.5,35L48.5,61L51.5,62.5L63.5,38.5C64,37 63,35 61.5,35Z"/>
+
+              <!-- Scissors Pivot Pin -->
+              <path
+                  android:fillColor="#FF38BDF8"
+                  android:pathData="M54,51.5m-1.5,0a1.5,1.5 0 1,0 3,0a1.5,1.5 0 1,0 -3,0"/>
+
+              <!-- Scissors Handles -->
+              <path
+                  android:strokeColor="#FFFFFFFF"
+                  android:strokeWidth="3"
+                  android:fillColor="#00000000"
+                  android:pathData="M48,66m-4.5,0a4.5,4.5 0 1,0 9,0a4.5,4.5 0 1,0 -9,0"/>
+              <path
+                  android:strokeColor="#FFFFFFFF"
+                  android:strokeWidth="3"
+                  android:fillColor="#00000000"
+                  android:pathData="M60,66m-4.5,0a4.5,4.5 0 1,0 9,0a4.5,4.5 0 1,0 -9,0"/>
+          </vector>
+          EOF
+
+          # Standalone Composite Vector (used inside the in-app ImageView badge)
+          cat << 'EOF' > ClipsVideo/app/src/main/res/drawable/ic_clips_logo.xml
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item android:drawable="@drawable/ic_clips_logo_background"/>
+              <item android:drawable="@drawable/ic_clips_logo_foreground"/>
+          </layer-list>
+          EOF
+
+          # Adaptive Launcher Icon XML (Android 8.0+)
+          cat << 'EOF' > ClipsVideo/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_clips_logo_background"/>
+              <foreground android:drawable="@drawable/ic_clips_logo_foreground"/>
+          </adaptive-icon>
+          EOF
+
+          cat << 'EOF' > ClipsVideo/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@drawable/ic_clips_logo_background"/>
+              <foreground android:drawable="@drawable/ic_clips_logo_foreground"/>
+          </adaptive-icon>
+          EOF
+
           cat << 'EOF' > ClipsVideo/app/src/main/AndroidManifest.xml
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application
                   android:label="Clips Video"
+                  android:icon="@mipmap/ic_launcher"
+                  android:roundIcon="@mipmap/ic_launcher_round"
                   android:supportsRtl="true">
                   <activity
                       android:name=".MainActivity"
@@ -82,6 +243,7 @@ jobs:
           import android.content.Intent
           import android.graphics.Typeface
           import android.graphics.drawable.GradientDrawable
+          import android.media.MediaCodec
           import android.media.MediaExtractor
           import android.media.MediaFormat
           import android.media.MediaMetadataRetriever
@@ -90,7 +252,10 @@ jobs:
           import android.os.Bundle
           import android.os.Handler
           import android.os.Looper
+          import android.os.ParcelFileDescriptor
+          import android.text.Editable
           import android.text.InputType
+          import android.text.TextWatcher
           import android.view.Gravity
           import android.widget.*
           import androidx.documentfile.provider.DocumentFile
@@ -99,6 +264,7 @@ jobs:
           import java.util.Date
           import java.util.Locale
           import java.util.concurrent.Executors
+          import kotlin.math.ceil
           import kotlin.math.min
 
           class MainActivity : Activity() {
@@ -106,7 +272,9 @@ jobs:
               private val pickFolder = 1002
               private var videoUri: Uri? = null
               private var folderUri: Uri? = null
+              private var selectedVideoDurationMs: Long? = null
               private lateinit var videoLabel: TextView
+              private lateinit var videoTimeLabel: TextView
               private lateinit var folderLabel: TextView
               private lateinit var durationInput: EditText
               private lateinit var status: TextView
@@ -140,6 +308,49 @@ jobs:
                   }
               }
 
+              private fun formatDuration(durationMs: Long): String {
+                  val totalSeconds = (durationMs / 1000L).coerceAtLeast(0L)
+                  val hours = totalSeconds / 3600L
+                  val minutes = (totalSeconds % 3600L) / 60L
+                  val seconds = totalSeconds % 60L
+                  return if (hours > 0L) {
+                      String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+                  } else {
+                      String.format(Locale.US, "%02d:%02d", minutes, seconds)
+                  }
+              }
+
+              private fun readVideoMetadata(uri: Uri): Pair<Long?, Int> {
+                  val retriever = MediaMetadataRetriever()
+                  return try {
+                      retriever.setDataSource(this, uri)
+                      val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                      val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                      Pair(duration, rotation)
+                  } catch (_: Exception) {
+                      Pair(null, 0)
+                  } finally {
+                      try { retriever.release() } catch (_: Exception) {}
+                  }
+              }
+
+              private fun updateVideoTimeInfo() {
+                  val durMs = selectedVideoDurationMs
+                  if (durMs == null || durMs <= 0L) {
+                      videoTimeLabel.text = "Length: --:--"
+                      return
+                  }
+                  val minutes = durationInput.text.toString().toLongOrNull()
+                  val summary = if (minutes != null && minutes in 1..600) {
+                      val segmentMs = minutes * 60_000L
+                      val estClips = ceil(durMs.toDouble() / segmentMs.toDouble()).toInt().coerceAtLeast(1)
+                      "Length: ${formatDuration(durMs)}  ·  ~$estClips clip(s) at ${minutes}m"
+                  } else {
+                      "Length: ${formatDuration(durMs)}"
+                  }
+                  videoTimeLabel.text = summary
+              }
+
               private fun buildUi() {
                   val scroll = ScrollView(this).apply {
                       setBackgroundColor(0xFFF3F5FA.toInt())
@@ -150,6 +361,17 @@ jobs:
                       orientation = LinearLayout.VERTICAL
                       setPadding(dp(20), dp(44), dp(20), dp(32))
                   }
+
+                  val badgeRow = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER
+                  }
+                  val iconPreview = ImageView(this).apply {
+                      setImageResource(R.drawable.ic_clips_logo)
+                      scaleType = ImageView.ScaleType.FIT_CENTER
+                  }
+                  badgeRow.addView(iconPreview, LinearLayout.LayoutParams(dp(64), dp(64)))
+                  layout.addView(badgeRow, wrapParams(bottomDp = 10))
 
                   val title = TextView(this).apply {
                       text = "Clips Video"
@@ -173,9 +395,18 @@ jobs:
                       text = "No video selected"
                       textSize = 14f
                       setTextColor(0xFF475569.toInt())
-                      setPadding(0, dp(6), 0, dp(12))
+                      setPadding(0, dp(6), 0, dp(4))
                   }
                   videoCard.addView(videoLabel, wrapParams())
+
+                  videoTimeLabel = TextView(this).apply {
+                      text = "Length: --:--"
+                      textSize = 13f
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFF1E40AF.toInt())
+                      setPadding(0, 0, 0, dp(12))
+                  }
+                  videoCard.addView(videoTimeLabel, wrapParams())
                   videoCard.addView(secondaryButton("Choose Video") { openVideoPicker() })
                   layout.addView(videoCard, wrapParams(bottomDp = 14))
 
@@ -203,6 +434,13 @@ jobs:
                       setSingleLine(true)
                       setPadding(dp(14), dp(12), dp(14), dp(12))
                       background = roundedBox(0xFFF8FAFC.toInt(), 10, 0xFFCBD5E1.toInt(), 1)
+                      addTextChangedListener(object : TextWatcher {
+                          override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                          override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                              updateVideoTimeInfo()
+                          }
+                          override fun afterTextChanged(s: Editable?) {}
+                      })
                   }
                   val inputParams = LinearLayout.LayoutParams(
                       LinearLayout.LayoutParams.MATCH_PARENT,
@@ -231,6 +469,7 @@ jobs:
                           setOnClickListener {
                               durationInput.setText(mins.toString())
                               durationInput.setSelection(durationInput.text.length)
+                              updateVideoTimeInfo()
                           }
                       }
                       val cp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -337,6 +576,9 @@ jobs:
                       videoLabel.text = displayName
                       videoLabel.setTextColor(0xFF0F172A.toInt())
                       videoLabel.setTypeface(null, Typeface.BOLD)
+                      val (dur, _) = readVideoMetadata(uri)
+                      selectedVideoDurationMs = dur
+                      updateVideoTimeInfo()
                   } else if (requestCode == pickFolder) {
                       folderUri = uri
                       val folderName = DocumentFile.fromTreeUri(this, uri)?.name ?: "Selected folder"
@@ -371,11 +613,9 @@ jobs:
               }
 
               private fun splitVideo(source: Uri, folder: Uri, segmentUs: Long): Int {
-                  val retriever = MediaMetadataRetriever()
-                  retriever.setDataSource(this, source)
-                  val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()
+                  val (metaDurationMs, rotation) = readVideoMetadata(source)
+                  val durationMs = selectedVideoDurationMs ?: metaDurationMs
                       ?: throw IllegalStateException("Cannot read video duration")
-                  retriever.release()
                   val totalUs = durationMs * 1000L
                   val directory = DocumentFile.fromTreeUri(this, folder) ?: throw IllegalStateException("Cannot open save folder")
                   val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
@@ -385,24 +625,36 @@ jobs:
                       val end = min(start + segmentUs, totalUs)
                       val out = directory.createFile("video/mp4", "ClipsVideo_${stamp}_%03d.mp4".format(Locale.US, part))
                           ?: throw IllegalStateException("Cannot create output file")
-                      writeSegment(source, out.uri, start, end)
+                      val actualEnd = writeSegment(source, out.uri, start, end, rotation)
                       handler.post { status.text = "Exported clip $part…" }
-                      start = end
+                      start = if (actualEnd > start) actualEnd else end
                       part++
                   }
                   return part - 1
               }
 
-              private fun writeSegment(source: Uri, destination: Uri, startUs: Long, endUs: Long) {
-                  val inputPfd = contentResolver.openFileDescriptor(source, "r")
-                      ?: throw IllegalStateException("Cannot open source video")
-                  val outputPfd = contentResolver.openFileDescriptor(destination, "w")
-                      ?: throw IllegalStateException("Cannot create output video")
+              private fun writeSegment(
+                  source: Uri,
+                  destination: Uri,
+                  startUs: Long,
+                  endUs: Long,
+                  rotationDegrees: Int
+              ): Long {
+                  var inputPfd: ParcelFileDescriptor? = null
+                  var outputPfd: ParcelFileDescriptor? = null
                   val extractor = MediaExtractor()
                   var muxer: MediaMuxer? = null
+                  var lastWrittenUs = startUs
                   try {
+                      inputPfd = contentResolver.openFileDescriptor(source, "r")
+                          ?: throw IllegalStateException("Cannot open source video")
+                      outputPfd = contentResolver.openFileDescriptor(destination, "w")
+                          ?: throw IllegalStateException("Cannot create output video")
+
                       extractor.setDataSource(inputPfd.fileDescriptor)
                       muxer = MediaMuxer(outputPfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+                      muxer.setOrientationHint(rotationDegrees)
+
                       val trackMap = HashMap<Int, Int>()
                       for (i in 0 until extractor.trackCount) {
                           val format = extractor.getTrackFormat(i)
@@ -413,32 +665,44 @@ jobs:
                           }
                       }
                       if (trackMap.isEmpty()) throw IllegalStateException("No supported audio/video tracks found")
+
                       muxer.start()
-                      extractor.seekTo(startUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+                      extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
                       val firstSampleTime = extractor.sampleTime.coerceAtLeast(0L)
                       val buffer = ByteBuffer.allocate(8 * 1024 * 1024)
-                      val info = MediaCodecBufferInfoCompat()
+                      val bufferInfo = MediaCodec.BufferInfo()
+
                       while (true) {
                           val track = extractor.sampleTrackIndex
                           if (track < 0) break
                           val time = extractor.sampleTime
-                          if (time >= endUs) break
+                          if (time >= endUs) {
+                              lastWrittenUs = time
+                              break
+                          }
                           if (trackMap.containsKey(track)) {
                               buffer.clear()
                               val size = extractor.readSampleData(buffer, 0)
                               if (size < 0) break
-                              info.set(0, size, (time - firstSampleTime).coerceAtLeast(0L), extractor.sampleFlags)
-                              muxer.writeSampleData(trackMap[track]!!, buffer, info.toAndroidInfo())
+                              bufferInfo.set(
+                                  0,
+                                  size,
+                                  (time - firstSampleTime).coerceAtLeast(0L),
+                                  extractor.sampleFlags
+                              )
+                              muxer.writeSampleData(trackMap[track]!!, buffer, bufferInfo)
+                              lastWrittenUs = time
                           }
                           if (!extractor.advance()) break
                       }
                       muxer.stop()
                   } finally {
                       try { muxer?.release() } catch (_: Exception) {}
-                      extractor.release()
-                      inputPfd.close()
-                      outputPfd.close()
+                      try { extractor.release() } catch (_: Exception) {}
+                      try { inputPfd?.close() } catch (_: Exception) {}
+                      try { outputPfd?.close() } catch (_: Exception) {}
                   }
+                  return lastWrittenUs
               }
 
               override fun onDestroy() {
