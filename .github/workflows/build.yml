@@ -264,8 +264,8 @@ jobs:
           import java.util.Date
           import java.util.Locale
           import java.util.concurrent.Executors
-          import kotlin.math.ceil
           import kotlin.math.min
+          import kotlin.math.roundToInt
 
           class MainActivity : Activity() {
               private val pickVideo = 1001
@@ -273,10 +273,12 @@ jobs:
               private var videoUri: Uri? = null
               private var folderUri: Uri? = null
               private var selectedVideoDurationMs: Long? = null
+              private var isSecondsUnit = false
               private lateinit var videoLabel: TextView
               private lateinit var videoTimeLabel: TextView
               private lateinit var folderLabel: TextView
               private lateinit var durationInput: EditText
+              private lateinit var unitToggleButton: Button
               private lateinit var status: TextView
               private lateinit var splitButton: Button
               private val executor = Executors.newSingleThreadExecutor()
@@ -320,6 +322,63 @@ jobs:
                   }
               }
 
+              private fun formatShortDuration(ms: Long): String {
+                  val totalSec = (ms / 1000.0).roundToInt().coerceAtLeast(1)
+                  val mins = totalSec / 60
+                  val secs = totalSec % 60
+                  return when {
+                      mins > 0 && secs == 0 -> "${mins}m"
+                      mins > 0 -> "${mins}m${secs}s"
+                      else -> "${secs}s"
+                  }
+              }
+
+              private fun parseSegmentMs(): Long? {
+                  val raw = durationInput.text.toString().trim().lowercase(Locale.US)
+                  if (raw.isEmpty()) return null
+                  return when {
+                      raw.endsWith("s") -> {
+                          val secs = raw.dropLast(1).trim().toLongOrNull() ?: return null
+                          if (secs in 1..36000) secs * 1_000L else null
+                      }
+                      raw.endsWith("m") -> {
+                          val mins = raw.dropLast(1).trim().toLongOrNull() ?: return null
+                          if (mins in 1..600) mins * 60_000L else null
+                      }
+                      else -> {
+                          val value = raw.toLongOrNull() ?: return null
+                          if (isSecondsUnit) {
+                              if (value in 1..36000) value * 1_000L else null
+                          } else {
+                              if (value in 1..600) value * 60_000L else null
+                          }
+                      }
+                  }
+              }
+
+              private fun buildSplitBreakdown(totalMs: Long, segmentMs: Long): String {
+                  if (totalMs <= segmentMs) {
+                      return "1 clip (${formatShortDuration(totalMs)})"
+                  }
+                  val fullClips = (totalMs / segmentMs).toInt()
+                  val remainderMs = totalMs % segmentMs
+                  val minTailMs = min(1500L, segmentMs / 4L)
+                  val hasRemainder = remainderMs >= minTailMs
+                  val totalClips = if (hasRemainder) fullClips + 1 else fullClips
+
+                  val parts = mutableListOf<String>()
+                  val fullLabel = formatShortDuration(segmentMs)
+                  if (fullClips <= 4) {
+                      repeat(fullClips) { parts.add(fullLabel) }
+                  } else {
+                      parts.add("${fullClips}×${fullLabel}")
+                  }
+                  if (hasRemainder) {
+                      parts.add(formatShortDuration(remainderMs))
+                  }
+                  return "$totalClips clips (${parts.joinToString(" + ")})"
+              }
+
               private fun readVideoMetadata(uri: Uri): Pair<Long?, Int> {
                   val retriever = MediaMetadataRetriever()
                   return try {
@@ -340,15 +399,18 @@ jobs:
                       videoTimeLabel.text = "Length: --:--"
                       return
                   }
-                  val minutes = durationInput.text.toString().toLongOrNull()
-                  val summary = if (minutes != null && minutes in 1..600) {
-                      val segmentMs = minutes * 60_000L
-                      val estClips = ceil(durMs.toDouble() / segmentMs.toDouble()).toInt().coerceAtLeast(1)
-                      "Length: ${formatDuration(durMs)}  ·  ~$estClips clip(s) at ${minutes}m"
+                  val segmentMs = parseSegmentMs()
+                  val summary = if (segmentMs != null && segmentMs > 0L) {
+                      "Length: ${formatDuration(durMs)}  ·  ${buildSplitBreakdown(durMs, segmentMs)}"
                   } else {
                       "Length: ${formatDuration(durMs)}"
                   }
                   videoTimeLabel.text = summary
+              }
+
+              private fun syncUnitToggleVisuals() {
+                  unitToggleButton.text = if (isSecondsUnit) "Unit: SEC" else "Unit: MIN"
+                  durationInput.hint = if (isSecondsUnit) "Enter seconds (1 - 36000)" else "Enter minutes (1 - 600)"
               }
 
               private fun buildUi() {
@@ -423,7 +485,13 @@ jobs:
                   layout.addView(folderCard, wrapParams(bottomDp = 14))
 
                   val lengthCard = cardContainer()
-                  lengthCard.addView(stepBadge("STEP 3 · CLIP LENGTH (MINUTES)"))
+                  lengthCard.addView(stepBadge("STEP 3 · CLIP LENGTH (SECONDS / MINUTES)"))
+
+                  val inputRow = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER_VERTICAL
+                  }
+
                   durationInput = EditText(this).apply {
                       setText("15")
                       hint = "Enter minutes (1 - 600)"
@@ -442,42 +510,102 @@ jobs:
                           override fun afterTextChanged(s: Editable?) {}
                       })
                   }
-                  val inputParams = LinearLayout.LayoutParams(
+                  val inputWeightParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                      rightMargin = dp(8)
+                  }
+                  inputRow.addView(durationInput, inputWeightParams)
+
+                  unitToggleButton = Button(this).apply {
+                      text = "Unit: MIN"
+                      textSize = 12f
+                      isAllCaps = false
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFF1E3A8A.toInt())
+                      background = roundedBox(0xFFDBEAFE.toInt(), 10, 0xFF93C5FD.toInt(), 1)
+                      setPadding(dp(12), dp(14), dp(12), dp(14))
+                      setOnClickListener {
+                          isSecondsUnit = !isSecondsUnit
+                          syncUnitToggleVisuals()
+                          updateVideoTimeInfo()
+                      }
+                  }
+                  inputRow.addView(unitToggleButton, LinearLayout.LayoutParams(
+                      LinearLayout.LayoutParams.WRAP_CONTENT,
+                      LinearLayout.LayoutParams.WRAP_CONTENT
+                  ))
+
+                  val inputRowParams = LinearLayout.LayoutParams(
                       LinearLayout.LayoutParams.MATCH_PARENT,
                       LinearLayout.LayoutParams.WRAP_CONTENT
                   ).apply {
                       topMargin = dp(8)
                       bottomMargin = dp(10)
                   }
-                  lengthCard.addView(durationInput, inputParams)
+                  lengthCard.addView(inputRow, inputRowParams)
 
-                  val presetRow = LinearLayout(this).apply {
+                  // Row 1: Seconds presets (10s, 15s, 20s, 30s)
+                  val secondsRow = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
                       gravity = Gravity.CENTER
                   }
-                  val presets = listOf(5, 10, 15, 30)
-                  presets.forEachIndexed { index, mins ->
+                  val secPresets = listOf(10, 15, 20, 30)
+                  secPresets.forEachIndexed { index, secs ->
+                      val chip = Button(this).apply {
+                          text = "${secs}s"
+                          textSize = 13f
+                          isAllCaps = false
+                          setTypeface(null, Typeface.BOLD)
+                          setTextColor(0xFF0369A1.toInt())
+                          background = roundedBox(0xFFF0F9FF.toInt(), 8, 0xFFBAE6FD.toInt(), 1)
+                          minimumHeight = 0
+                          minHeight = 0
+                          setPadding(dp(8), dp(8), dp(8), dp(8))
+                          setOnClickListener {
+                              isSecondsUnit = true
+                              syncUnitToggleVisuals()
+                              durationInput.setText(secs.toString())
+                              durationInput.setSelection(durationInput.text.length)
+                              updateVideoTimeInfo()
+                          }
+                      }
+                      val cp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                          if (index < secPresets.lastIndex) rightMargin = dp(8)
+                      }
+                      secondsRow.addView(chip, cp)
+                  }
+                  lengthCard.addView(secondsRow, wrapParams(bottomDp = 8))
+
+                  // Row 2: Minutes presets (5m, 10m, 15m, 30m)
+                  val minutesRow = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER
+                  }
+                  val minPresets = listOf(5, 10, 15, 30)
+                  minPresets.forEachIndexed { index, mins ->
                       val chip = Button(this).apply {
                           text = "${mins}m"
                           textSize = 13f
                           isAllCaps = false
+                          setTypeface(null, Typeface.BOLD)
                           setTextColor(0xFF1E3A8A.toInt())
                           background = roundedBox(0xFFEFF6FF.toInt(), 8, 0xFFBFDBFE.toInt(), 1)
                           minimumHeight = 0
                           minHeight = 0
                           setPadding(dp(8), dp(8), dp(8), dp(8))
                           setOnClickListener {
+                              isSecondsUnit = false
+                              syncUnitToggleVisuals()
                               durationInput.setText(mins.toString())
                               durationInput.setSelection(durationInput.text.length)
                               updateVideoTimeInfo()
                           }
                       }
                       val cp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                          if (index < presets.lastIndex) rightMargin = dp(8)
+                          if (index < minPresets.lastIndex) rightMargin = dp(8)
                       }
-                      presetRow.addView(chip, cp)
+                      minutesRow.addView(chip, cp)
                   }
-                  lengthCard.addView(presetRow, wrapParams())
+                  lengthCard.addView(minutesRow, wrapParams())
                   layout.addView(lengthCard, wrapParams(bottomDp = 18))
 
                   splitButton = Button(this).apply {
@@ -506,9 +634,19 @@ jobs:
                       textSize = 12f
                       setTextColor(0xFF64748B.toInt())
                       gravity = Gravity.CENTER
-                      setPadding(dp(8), 0, dp(8), 0)
+                      setPadding(dp(8), 0, dp(8), dp(12))
                   }
                   layout.addView(foot, wrapParams())
+
+                  val copyright = TextView(this).apply {
+                      text = "Copyright by : YEOM Bros"
+                      textSize = 12f
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFF475569.toInt())
+                      gravity = Gravity.CENTER
+                      setPadding(dp(8), dp(4), dp(8), 0)
+                  }
+                  layout.addView(copyright, wrapParams())
 
                   scroll.addView(layout)
                   setContentView(scroll)
@@ -591,46 +729,86 @@ jobs:
               private fun startSplit() {
                   val source = videoUri
                   val target = folderUri
-                  val minutes = durationInput.text.toString().toLongOrNull()
+                  val segmentMs = parseSegmentMs()
                   if (source == null || target == null) {
                       status.text = "Please choose both a video and a save folder."
                       return
                   }
-                  if (minutes == null || minutes !in 1..600) {
-                      status.text = "Enter a clip length from 1 to 600 minutes."
+                  if (segmentMs == null || segmentMs <= 0L) {
+                      status.text = if (isSecondsUnit) {
+                          "Enter a clip length from 1 to 36000 seconds."
+                      } else {
+                          "Enter a clip length from 1 to 600 minutes."
+                      }
                       return
                   }
                   splitButton.isEnabled = false
                   status.text = "Preparing video…"
                   executor.execute {
                       try {
-                          val count = splitVideo(source, target, minutes * 60L * 1_000_000L)
-                          handler.post { status.text = "Finished! Created $count clip(s)."; splitButton.isEnabled = true }
+                          val exportedLabels = splitVideo(source, target, segmentMs * 1_000L)
+                          val summary = if (exportedLabels.size <= 6) {
+                              exportedLabels.joinToString(" + ")
+                          } else {
+                              "${exportedLabels.first()} … ${exportedLabels.last()}"
+                          }
+                          handler.post {
+                              status.text = "Finished! Created ${exportedLabels.size} clip(s): $summary"
+                              splitButton.isEnabled = true
+                          }
                       } catch (e: Exception) {
-                          handler.post { status.text = "Could not split video: ${e.message ?: "Unsupported file"}"; splitButton.isEnabled = true }
+                          handler.post {
+                              status.text = "Could not split video: ${e.message ?: "Unsupported file"}"
+                              splitButton.isEnabled = true
+                          }
                       }
                   }
               }
 
-              private fun splitVideo(source: Uri, folder: Uri, segmentUs: Long): Int {
+              private fun splitVideo(source: Uri, folder: Uri, segmentUs: Long): List<String> {
                   val (metaDurationMs, rotation) = readVideoMetadata(source)
                   val durationMs = selectedVideoDurationMs ?: metaDurationMs
                       ?: throw IllegalStateException("Cannot read video duration")
                   val totalUs = durationMs * 1000L
                   val directory = DocumentFile.fromTreeUri(this, folder) ?: throw IllegalStateException("Cannot open save folder")
                   val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                  var start = 0L
+
+                  val exportedLabels = mutableListOf<String>()
+                  var startUs = 0L
                   var part = 1
-                  while (start < totalUs) {
-                      val end = min(start + segmentUs, totalUs)
+                  val minTailUs = min(1_500_000L, segmentUs / 4L)
+
+                  while (startUs < totalUs) {
+                      val remainingUs = totalUs - startUs
+                      if (part > 1 && remainingUs < minTailUs) break
+
+                      val targetEndUs = if (remainingUs - segmentUs < minTailUs) {
+                          totalUs
+                      } else {
+                          min(startUs + segmentUs, totalUs)
+                      }
+
                       val out = directory.createFile("video/mp4", "ClipsVideo_${stamp}_%03d.mp4".format(Locale.US, part))
                           ?: throw IllegalStateException("Cannot create output file")
-                      val actualEnd = writeSegment(source, out.uri, start, end, rotation)
-                      handler.post { status.text = "Exported clip $part…" }
-                      start = if (actualEnd > start) actualEnd else end
+
+                      val (nextStartUs, writtenDurationUs) = writeSegment(
+                          source = source,
+                          destination = out.uri,
+                          startUs = startUs,
+                          endUs = targetEndUs,
+                          isLastClip = (targetEndUs >= totalUs),
+                          rotationDegrees = rotation
+                      )
+
+                      val label = formatShortDuration(writtenDurationUs / 1000L)
+                      exportedLabels.add(label)
+                      handler.post { status.text = "Exported clip $part ($label)…" }
+
+                      if (targetEndUs >= totalUs || nextStartUs <= startUs) break
+                      startUs = nextStartUs
                       part++
                   }
-                  return part - 1
+                  return exportedLabels
               }
 
               private fun writeSegment(
@@ -638,13 +816,16 @@ jobs:
                   destination: Uri,
                   startUs: Long,
                   endUs: Long,
+                  isLastClip: Boolean,
                   rotationDegrees: Int
-              ): Long {
+              ): Pair<Long, Long> {
                   var inputPfd: ParcelFileDescriptor? = null
                   var outputPfd: ParcelFileDescriptor? = null
                   val extractor = MediaExtractor()
                   var muxer: MediaMuxer? = null
-                  var lastWrittenUs = startUs
+                  var nextClipStartUs = endUs
+                  var maxPtsUs = 0L
+
                   try {
                       inputPfd = contentResolver.openFileDescriptor(source, "r")
                           ?: throw IllegalStateException("Cannot open source video")
@@ -655,43 +836,86 @@ jobs:
                       muxer = MediaMuxer(outputPfd.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
                       muxer.setOrientationHint(rotationDegrees)
 
+                      var videoTrackIndex = -1
+                      val allMediaTracks = mutableListOf<Int>()
                       val trackMap = HashMap<Int, Int>()
+
                       for (i in 0 until extractor.trackCount) {
                           val format = extractor.getTrackFormat(i)
                           val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
                           if (mime.startsWith("video/") || mime.startsWith("audio/")) {
-                              extractor.selectTrack(i)
+                              allMediaTracks.add(i)
                               trackMap[i] = muxer.addTrack(format)
+                              if (mime.startsWith("video/") && videoTrackIndex == -1) {
+                                  videoTrackIndex = i
+                              }
                           }
                       }
                       if (trackMap.isEmpty()) throw IllegalStateException("No supported audio/video tracks found")
 
+                      val anchorUs: Long
+                      if (videoTrackIndex != -1) {
+                          extractor.selectTrack(videoTrackIndex)
+                          extractor.seekTo(
+                              startUs,
+                              if (startUs == 0L) MediaExtractor.SEEK_TO_PREVIOUS_SYNC else MediaExtractor.SEEK_TO_CLOSEST_SYNC
+                          )
+                          anchorUs = extractor.sampleTime.coerceAtLeast(0L)
+                          extractor.unselectTrack(videoTrackIndex)
+                      } else {
+                          extractor.selectTrack(allMediaTracks.first())
+                          extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+                          anchorUs = extractor.sampleTime.coerceAtLeast(0L)
+                          extractor.unselectTrack(allMediaTracks.first())
+                      }
+
+                      for (trackIdx in allMediaTracks) {
+                          extractor.selectTrack(trackIdx)
+                      }
+                      extractor.seekTo(anchorUs, MediaExtractor.SEEK_TO_PREVIOUS_SYNC)
+
                       muxer.start()
-                      extractor.seekTo(startUs, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                      val firstSampleTime = extractor.sampleTime.coerceAtLeast(0L)
                       val buffer = ByteBuffer.allocate(8 * 1024 * 1024)
                       val bufferInfo = MediaCodec.BufferInfo()
+                      var sawVideoKeyframe = (videoTrackIndex == -1)
 
                       while (true) {
                           val track = extractor.sampleTrackIndex
                           if (track < 0) break
                           val time = extractor.sampleTime
-                          if (time >= endUs) {
-                              lastWrittenUs = time
-                              break
+                          val flags = extractor.sampleFlags
+
+                          if (time < anchorUs) {
+                              if (!extractor.advance()) break
+                              continue
                           }
+
+                          if (!sawVideoKeyframe) {
+                              if (track == videoTrackIndex && (flags and MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0) {
+                                  sawVideoKeyframe = true
+                              } else {
+                                  if (!extractor.advance()) break
+                                  continue
+                              }
+                          }
+
+                          if (!isLastClip && time >= endUs) {
+                              if (videoTrackIndex == -1 || (track == videoTrackIndex && (flags and MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0)) {
+                                  nextClipStartUs = time
+                                  break
+                              }
+                          }
+
                           if (trackMap.containsKey(track)) {
                               buffer.clear()
                               val size = extractor.readSampleData(buffer, 0)
                               if (size < 0) break
-                              bufferInfo.set(
-                                  0,
-                                  size,
-                                  (time - firstSampleTime).coerceAtLeast(0L),
-                                  extractor.sampleFlags
-                              )
+                              val relativePtsUs = (time - anchorUs).coerceAtLeast(0L)
+                              if (relativePtsUs > maxPtsUs) {
+                                  maxPtsUs = relativePtsUs
+                              }
+                              bufferInfo.set(0, size, relativePtsUs, flags)
                               muxer.writeSampleData(trackMap[track]!!, buffer, bufferInfo)
-                              lastWrittenUs = time
                           }
                           if (!extractor.advance()) break
                       }
@@ -702,7 +926,9 @@ jobs:
                       try { inputPfd?.close() } catch (_: Exception) {}
                       try { outputPfd?.close() } catch (_: Exception) {}
                   }
-                  return lastWrittenUs
+
+                  val writtenDurationUs = if (maxPtsUs > 0L) maxPtsUs else (endUs - startUs).coerceAtLeast(0L)
+                  return Pair(nextClipStartUs, writtenDurationUs)
               }
 
               override fun onDestroy() {
