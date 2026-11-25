@@ -312,13 +312,13 @@ jobs:
 
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  configureFullScreenEdgeToEdge()
                   try {
                       if (isAppApproved()) {
                           buildMainAppUi()
                       } else {
                           buildApprovalLockUi()
                       }
+                      configureFullScreenEdgeToEdge()
                   } catch (e: Exception) {
                       Toast.makeText(this, "UI error: ${e.message}", Toast.LENGTH_LONG).show()
                   }
@@ -326,28 +326,32 @@ jobs:
 
               @Suppress("DEPRECATION")
               private fun configureFullScreenEdgeToEdge() {
-                  window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                  window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
-                  window.statusBarColor = Color.TRANSPARENT
-                  window.navigationBarColor = Color.TRANSPARENT
+                  try {
+                      window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                      window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+                      window.statusBarColor = Color.TRANSPARENT
+                      window.navigationBarColor = Color.TRANSPARENT
 
-                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                      window.setDecorFitsSystemWindows(false)
-                      window.insetsController?.setSystemBarsAppearance(
-                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                          WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-                              WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                      )
-                  } else {
-                      var flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                          flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                          window.setDecorFitsSystemWindows(false)
+                          window.insetsController?.setSystemBarsAppearance(
+                              WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                  WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                              WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                                  WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                          )
+                      } else {
+                          var flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                              flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+                          }
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                              flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+                          }
+                          window.decorView.systemUiVisibility = flags
                       }
-                      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                          flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
-                      }
-                      window.decorView.systemUiVisibility = flags
+                  } catch (_: Exception) {
+                      // Fallback safely on OEM skins that restrict insetsController
                   }
               }
 
@@ -553,7 +557,6 @@ jobs:
                   val layout = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
                   }
-                  applySafeTopBottomPadding(layout)
 
                   val badgeRow = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
@@ -680,6 +683,7 @@ jobs:
 
                   scroll.addView(layout)
                   setContentView(scroll)
+                  applySafeTopBottomPadding(layout)
               }
 
               private fun dp(value: Int): Int =
@@ -811,7 +815,6 @@ jobs:
                   val layout = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
                   }
-                  applySafeTopBottomPadding(layout)
 
                   val badgeRow = LinearLayout(this).apply {
                       orientation = LinearLayout.HORIZONTAL
@@ -1042,6 +1045,7 @@ jobs:
 
                   scroll.addView(layout)
                   setContentView(scroll)
+                  applySafeTopBottomPadding(layout)
               }
 
               private fun wrapParams(bottomDp: Int = 0) = LinearLayout.LayoutParams(
