@@ -240,6 +240,10 @@ jobs:
           package com.clipsvideo.app
 
           import android.app.Activity
+          import android.app.AlertDialog
+          import android.content.ClipData
+          import android.content.ClipboardManager
+          import android.content.Context
           import android.content.Intent
           import android.graphics.Typeface
           import android.graphics.drawable.GradientDrawable
@@ -253,6 +257,7 @@ jobs:
           import android.os.Handler
           import android.os.Looper
           import android.os.ParcelFileDescriptor
+          import android.provider.Settings
           import android.text.Editable
           import android.text.InputType
           import android.text.TextWatcher
@@ -260,20 +265,33 @@ jobs:
           import android.widget.*
           import androidx.documentfile.provider.DocumentFile
           import java.nio.ByteBuffer
+          import java.security.MessageDigest
           import java.text.SimpleDateFormat
           import java.util.Date
           import java.util.Locale
+          import java.util.UUID
           import java.util.concurrent.Executors
           import kotlin.math.min
           import kotlin.math.roundToInt
 
           class MainActivity : Activity() {
+              // CHANGE THIS SECRET SALT & ADMIN PIN BEFORE BUILDING IF DESIRED
+              private val ADMIN_PIN = "2026"
+              private val SECRET_SALT = "YEOM_BROS_CLIPS_VIDEO_2026_SECURE"
+
+              private val prefsName = "clips_video_approval_prefs"
+              private val keyApproved = "is_approved"
+              private val keyRequestId = "device_request_id"
+
               private val pickVideo = 1001
               private val pickFolder = 1002
               private var videoUri: Uri? = null
               private var folderUri: Uri? = null
               private var selectedVideoDurationMs: Long? = null
               private var isSecondsUnit = false
+              private var adminTapCount = 0
+              private var lastAdminTapMs = 0L
+
               private lateinit var videoLabel: TextView
               private lateinit var videoTimeLabel: TextView
               private lateinit var folderLabel: TextView
@@ -287,10 +305,293 @@ jobs:
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
                   try {
-                      buildUi()
+                      if (isAppApproved()) {
+                          buildMainAppUi()
+                      } else {
+                          buildApprovalLockUi()
+                      }
                   } catch (e: Exception) {
                       Toast.makeText(this, "UI error: ${e.message}", Toast.LENGTH_LONG).show()
                   }
+              }
+
+              private fun isAppApproved(): Boolean {
+                  val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                  return prefs.getBoolean(keyApproved, false)
+              }
+
+              private fun getOrCreateRequestId(): String {
+                  val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                  val existing = prefs.getString(keyRequestId, null)
+                  if (!existing.isNullOrBlank()) return existing
+
+                  val androidId = try {
+                      Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+                  } catch (_: Exception) {
+                      null
+                  }
+                  val seed = if (!androidId.isNullOrBlank()) androidId else UUID.randomUUID().toString()
+                  val hash = sha256Hex("REQ:$seed").take(6).uppercase(Locale.US)
+                  val reqId = "REQ-$hash"
+                  prefs.edit().putString(keyRequestId, reqId).apply()
+                  return reqId
+              }
+
+              private fun computeApprovalCode(requestId: String): String {
+                  val normalized = requestId.trim().uppercase(Locale.US)
+                  val digest = sha256Hex("$SECRET_SALT|$normalized")
+                  return "KEY-${digest.take(8).uppercase(Locale.US)}"
+              }
+
+              private fun sha256Hex(input: String): String {
+                  val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
+                  return bytes.joinToString("") { "%02x".format(it) }
+              }
+
+              private fun copyToClipboard(label: String, text: String) {
+                  val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                  clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+                  Toast.makeText(this, "$label copied!", Toast.LENGTH_SHORT).show()
+              }
+
+              private fun handleCopyrightSecretTap() {
+                  val now = System.currentTimeMillis()
+                  if (now - lastAdminTapMs > 2500L) {
+                      adminTapCount = 0
+                  }
+                  lastAdminTapMs = now
+                  adminTapCount++
+                  if (adminTapCount >= 5) {
+                      adminTapCount = 0
+                      showAdminPinDialog()
+                  }
+              }
+
+              private fun showAdminPinDialog() {
+                  val pinInput = EditText(this).apply {
+                      hint = "Enter Admin PIN"
+                      inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+                      setPadding(dp(16), dp(12), dp(16), dp(12))
+                  }
+                  AlertDialog.Builder(this)
+                      .setTitle("YEOM Bros · Admin Access")
+                      .setMessage("Enter your Admin PIN to open the Approval Code Generator.")
+                      .setView(pinInput)
+                      .setPositiveButton("Unlock Admin") { _, _ ->
+                          if (pinInput.text.toString().trim() == ADMIN_PIN) {
+                              showAdminGeneratorDialog()
+                          } else {
+                              Toast.makeText(this, "Incorrect Admin PIN", Toast.LENGTH_SHORT).show()
+                          }
+                      }
+                      .setNegativeButton("Cancel", null)
+                      .show()
+              }
+
+              private fun showAdminGeneratorDialog() {
+                  val container = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(dp(20), dp(12), dp(20), dp(8))
+                  }
+
+                  val infoText = TextView(this).apply {
+                      text = "Enter the user's Request ID (e.g., REQ-1A2B3C) to generate their Approval Code:"
+                      textSize = 13f
+                      setTextColor(0xFF475569.toInt())
+                  }
+                  container.addView(infoText, wrapParams(bottomDp = 10))
+
+                  val reqInput = EditText(this).apply {
+                      hint = "REQ-XXXXXX"
+                      setText(getOrCreateRequestId())
+                      isAllCaps = true
+                      setSingleLine(true)
+                      setPadding(dp(12), dp(10), dp(12), dp(10))
+                      background = roundedBox(0xFFF8FAFC.toInt(), 8, 0xFFCBD5E1.toInt(), 1)
+                  }
+                  container.addView(reqInput, wrapParams(bottomDp = 12))
+
+                  val generatedCodeView = TextView(this).apply {
+                      text = computeApprovalCode(reqInput.text.toString())
+                      textSize = 18f
+                      setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                      gravity = Gravity.CENTER
+                      setTextColor(0xFF1E40AF.toInt())
+                      background = roundedBox(0xFFEFF6FF.toInt(), 10, 0xFF93C5FD.toInt(), 1)
+                      setPadding(dp(12), dp(12), dp(12), dp(12))
+                  }
+                  container.addView(generatedCodeView, wrapParams(bottomDp = 10))
+
+                  reqInput.addTextChangedListener(object : TextWatcher {
+                      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                          val text = s?.toString()?.trim().orEmpty()
+                          generatedCodeView.text = if (text.isNotEmpty()) computeApprovalCode(text) else "KEY--------"
+                      }
+                      override fun afterTextChanged(s: Editable?) {}
+                  })
+
+                  val copyBtn = secondaryButton("Copy Approval Code") {
+                      val code = generatedCodeView.text.toString()
+                      copyToClipboard("Approval Code", code)
+                  }
+                  container.addView(copyBtn)
+
+                  val builder = AlertDialog.Builder(this)
+                      .setTitle("Admin Approval Generator")
+                      .setView(container)
+                      .setPositiveButton("Close", null)
+
+                  if (!isAppApproved()) {
+                      builder.setNeutralButton("Approve This Phone") { _, _ ->
+                          getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                              .edit()
+                              .putBoolean(keyApproved, true)
+                              .apply()
+                          Toast.makeText(this, "Admin phone approved!", Toast.LENGTH_SHORT).show()
+                          buildMainAppUi()
+                      }
+                  }
+
+                  builder.show()
+              }
+
+              private fun buildApprovalLockUi() {
+                  val requestId = getOrCreateRequestId()
+
+                  val scroll = ScrollView(this).apply {
+                      setBackgroundColor(0xFFF3F5FA.toInt())
+                      isFillViewport = true
+                  }
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(dp(20), dp(48), dp(20), dp(32))
+                  }
+
+                  val badgeRow = LinearLayout(this).apply {
+                      orientation = LinearLayout.HORIZONTAL
+                      gravity = Gravity.CENTER
+                  }
+                  val iconPreview = ImageView(this).apply {
+                      setImageResource(R.drawable.ic_clips_logo)
+                      scaleType = ImageView.ScaleType.FIT_CENTER
+                  }
+                  badgeRow.addView(iconPreview, LinearLayout.LayoutParams(dp(72), dp(72)))
+                  layout.addView(badgeRow, wrapParams(bottomDp = 12))
+
+                  val title = TextView(this).apply {
+                      text = "Clips Video"
+                      textSize = 26f
+                      setTextColor(0xFF0F172A.toInt())
+                      gravity = Gravity.CENTER
+                      setTypeface(null, Typeface.BOLD)
+                  }
+                  val subtitle = TextView(this).apply {
+                      text = "Admin approval is required before using this app"
+                      textSize = 14f
+                      gravity = Gravity.CENTER
+                      setTextColor(0xFF64748B.toInt())
+                  }
+                  layout.addView(title, wrapParams(bottomDp = 4))
+                  layout.addView(subtitle, wrapParams(bottomDp = 22))
+
+                  // Step 1: Request ID Card
+                  val reqCard = cardContainer()
+                  reqCard.addView(stepBadge("STEP 1 · YOUR REQUEST ID"))
+                  val reqHelp = TextView(this).apply {
+                      text = "Send this Request ID to the app owner (YEOM Bros) to receive your Approval Code:"
+                      textSize = 13f
+                      setTextColor(0xFF475569.toInt())
+                      setPadding(0, dp(6), 0, dp(10))
+                  }
+                  reqCard.addView(reqHelp, wrapParams())
+
+                  val reqCodeDisplay = TextView(this).apply {
+                      text = requestId
+                      textSize = 22f
+                      setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                      gravity = Gravity.CENTER
+                      setTextColor(0xFF1E3A8A.toInt())
+                      background = roundedBox(0xFFEFF6FF.toInt(), 12, 0xFF93C5FD.toInt(), 1)
+                      setPadding(dp(14), dp(14), dp(14), dp(14))
+                  }
+                  reqCard.addView(reqCodeDisplay, wrapParams(bottomDp = 12))
+                  reqCard.addView(secondaryButton("Copy Request ID") {
+                      copyToClipboard("Request ID", requestId)
+                  })
+                  layout.addView(reqCard, wrapParams(bottomDp = 16))
+
+                  // Step 2: Approval Code Input Card
+                  val unlockCard = cardContainer()
+                  unlockCard.addView(stepBadge("STEP 2 · ENTER APPROVAL CODE"))
+                  val codeInput = EditText(this).apply {
+                      hint = "Enter KEY-XXXXXXXX"
+                      textSize = 18f
+                      setTypeface(Typeface.MONOSPACE, Typeface.BOLD)
+                      setTextColor(0xFF0F172A.toInt())
+                      isAllCaps = true
+                      setSingleLine(true)
+                      setPadding(dp(14), dp(12), dp(14), dp(12))
+                      background = roundedBox(0xFFF8FAFC.toInt(), 10, 0xFFCBD5E1.toInt(), 1)
+                  }
+                  val codeInputParams = LinearLayout.LayoutParams(
+                      LinearLayout.LayoutParams.MATCH_PARENT,
+                      LinearLayout.LayoutParams.WRAP_CONTENT
+                  ).apply {
+                      topMargin = dp(8)
+                      bottomMargin = dp(12)
+                  }
+                  unlockCard.addView(codeInput, codeInputParams)
+
+                  val lockStatus = TextView(this).apply {
+                      text = "Waiting for approval code…"
+                      textSize = 13f
+                      setTextColor(0xFF64748B.toInt())
+                      setPadding(0, 0, 0, dp(12))
+                  }
+                  unlockCard.addView(lockStatus, wrapParams())
+
+                  val verifyButton = Button(this).apply {
+                      text = "Verify & Unlock App"
+                      textSize = 16f
+                      isAllCaps = false
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFFFFFFFF.toInt())
+                      background = roundedBox(0xFF2563EB.toInt(), 14)
+                      setPadding(dp(16), dp(14), dp(16), dp(14))
+                      setOnClickListener {
+                          val entered = codeInput.text.toString().trim().uppercase(Locale.US)
+                          val expected = computeApprovalCode(requestId)
+                          if (entered == expected) {
+                              getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+                                  .edit()
+                                  .putBoolean(keyApproved, true)
+                                  .apply()
+                              Toast.makeText(this@MainActivity, "Approved! Welcome to Clips Video.", Toast.LENGTH_SHORT).show()
+                              buildMainAppUi()
+                          } else {
+                              lockStatus.text = "Invalid Approval Code. Please check with YEOM Bros and try again."
+                              lockStatus.setTextColor(0xFFDC2626.toInt())
+                          }
+                      }
+                  }
+                  unlockCard.addView(verifyButton, wrapParams())
+                  layout.addView(unlockCard, wrapParams(bottomDp = 20))
+
+                  val copyright = TextView(this).apply {
+                      text = "Copyright by : YEOM Bros"
+                      textSize = 12f
+                      setTypeface(null, Typeface.BOLD)
+                      setTextColor(0xFF475569.toInt())
+                      gravity = Gravity.CENTER
+                      setPadding(dp(8), dp(8), dp(8), dp(8))
+                      setOnClickListener { handleCopyrightSecretTap() }
+                  }
+                  layout.addView(copyright, wrapParams())
+
+                  scroll.addView(layout)
+                  setContentView(scroll)
               }
 
               private fun dp(value: Int): Int =
@@ -413,7 +714,7 @@ jobs:
                   durationInput.hint = if (isSecondsUnit) "Enter seconds (1 - 36000)" else "Enter minutes (1 - 600)"
               }
 
-              private fun buildUi() {
+              private fun buildMainAppUi() {
                   val scroll = ScrollView(this).apply {
                       setBackgroundColor(0xFFF3F5FA.toInt())
                       isFillViewport = true
@@ -644,7 +945,8 @@ jobs:
                       setTypeface(null, Typeface.BOLD)
                       setTextColor(0xFF475569.toInt())
                       gravity = Gravity.CENTER
-                      setPadding(dp(8), dp(4), dp(8), 0)
+                      setPadding(dp(8), dp(8), dp(8), dp(8))
+                      setOnClickListener { handleCopyrightSecretTap() }
                   }
                   layout.addView(copyright, wrapParams())
 
